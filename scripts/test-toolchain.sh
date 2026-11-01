@@ -103,6 +103,15 @@ grep -q "goVersion == \$want" "$WF" \
 grep -q "actions/setup-go@" "$WF" && ! grep -q "actions/setup-go@v" "$WF" \
   && ok "setup-go pinned to an immutable commit SHA" \
   || bad "setup-go is not SHA-pinned"
+# Regression guard: the CI assertion must compare the toolchain value as
+# extracted from go.mod. The toolchain directive already carries the "go"
+# prefix, so concatenating another one (want="go$(sed ...)") produces
+# "gogo1.27.3" and fails the comparison on every runner. Keep it banned.
+if grep -Fq 'go$(sed' "$WF"; then
+  bad "CI double-prefixes the toolchain value (go\$(sed ...) yields gogo1.27.3)"
+else
+  ok "CI compares the toolchain value without an extra go prefix"
+fi
 
 # --- 6. documented enforcement gap ---------------------------------------------
 grep -q "GOTOOLCHAIN=auto" docs/TOOLCHAIN.md 2>/dev/null \
