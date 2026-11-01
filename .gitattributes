@@ -1,0 +1,32 @@
+# ==========================================
+# RONDA - Line Ending Policy (Linux-targeted)
+# ==========================================
+# Normalize every text file to LF in the repo AND the working tree,
+# on every platform. Makefile and *.sh break with CRLF.
+
+* text=auto eol=lf
+
+# Build-critical: always LF, even if git misdetects
+Makefile      text eol=lf
+*.mk          text eol=lf
+*.go          text eol=lf
+go.mod        text eol=lf
+go.sum        text eol=lf
+*.sh          text eol=lf
+*.py          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.md          text eol=lf
+*.json        text eol=lf
+*.php         text eol=lf
+*.txt         text eol=lf
+
+# Credentials / keystores: git must never touch or normalize these
+# (they should never be committed at all - see .gitignore and SIGNING.md)
+*.key         -text
+*.pem         -text
+*.p12         -text
+*.pfx         -text
+
+# Binaries (defensive; these are git-ignored anyway)
+*.exe         -text

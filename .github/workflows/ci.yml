@@ -1,0 +1,123 @@
+# RONDA continuous integration.
+#
+# This workflow prepares release automation only. It never publishes a
+# release, never creates a tag, never deploys and holds no secrets: it runs
+# the full verification suite and uploads the local release candidate as a
+# workflow artifact that must be reviewed manually.
+#
+# Third-party actions are pinned to immutable commit SHAs (the SHAs of the
+# referenced tags at the time this workflow was prepared; re-verify after
+# major-version bumps).
+#
+# Toolchain: setup-go v6 reads BOTH the `go` and `toolchain` directives from
+# go.mod, so CI installs exactly the authoritative release toolchain declared
+# there (currently go1.27.3, a supported security-patched release). A manual
+# assertion below re-checks the selection so a setup-go behavior change can
+# never silently build the release with a different toolchain.
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (fmt, build, vet, test, race)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go (toolchain directive from go.mod)
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6 (6.5.0)
+        with:
+          go-version-file: go.mod
+
+      - name: Assert the authoritative toolchain was selected
+        run: |
+          want="go$(sed -n 's/^toolchain //p' go.mod)"
+          got=$(go env GOVERSION)
+          echo "go.mod toolchain: $want; selected: $got"
+          test "$got" = "$want" || { echo "CI toolchain $got != go.mod toolchain $want"; exit 1; }
+
+      - name: Check formatting
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt reported unformatted files:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
+      - name: Race detector
+        run: go test -race ./...
+
+  release-candidate:
+    name: build and package local release candidate
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go (toolchain directive from go.mod)
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6 (6.5.0)
+        with:
+          go-version-file: go.mod
+
+      - name: Assert the authoritative toolchain was selected
+        run: |
+          want="go$(sed -n 's/^toolchain //p' go.mod)"
+          got=$(go env GOVERSION)
+          echo "go.mod toolchain: $want; selected: $got"
+          test "$got" = "$want" || { echo "CI toolchain $got != go.mod toolchain $want"; exit 1; }
+
+      - name: Build deterministic release candidate (amd64 + arm64)
+        run: make release
+
+      - name: Installer security and failure-mode tests
+        run: make test-installer
+
+      - name: Validate release artifacts
+        run: |
+          test -f dist/ronda-linux-amd64
+          test -f dist/ronda-linux-arm64
+          test -f dist/ronda-linux-amd64.tar.gz
+          test -f dist/ronda-linux-arm64.tar.gz
+          test -f dist/SHA256SUMS
+          test -f dist/release-manifest.json
+          test -f dist/SBOM.cdx.json
+          ( cd dist && sha256sum -c SHA256SUMS )
+          jq -e '.bomFormat == "CycloneDX" and .specVersion == 15 and (.metadata.component.name == "ronda")' dist/SBOM.cdx.json > /dev/null
+          jq -e '.signingStatus == "NOT_CONFIGURED"' dist/release-manifest.json > /dev/null
+          want="go$(sed -n 's/^toolchain //p' go.mod)"
+          jq -e --arg want "$want" '.goVersion == $want' dist/release-manifest.json > /dev/null
+          jq -e --arg want "$want" '.metadata.tools.components[0].version == $want' dist/SBOM.cdx.json > /dev/null
+          echo "release artifacts validated (signing stays NOT_CONFIGURED, toolchain $want)"
+
+      - name: Upload the release candidate for manual review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ronda-release-candidate
+          path: |
+            dist/ronda-linux-amd64
+            dist/ronda-linux-arm64
+            dist/ronda-linux-amd64.tar.gz
+            dist/ronda-linux-arm64.tar.gz
+            dist/SHA256SUMS
+            dist/release-manifest.json
+            dist/SBOM.cdx.json
+          if-no-files-found: error

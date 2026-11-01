@@ -1,0 +1,51 @@
+# ==========================================
+# RONDA - Generated Build Artifacts
+# ==========================================
+
+/dist/
+/dist-go127/
+/dist-go127-repro-1/
+/dist-go127-repro-2/
+/dist-repro-1/
+/dist-repro-2/
+
+# Codelyxa AI Agent Memory
+/Codelyxa/
+
+# Root release binaries
+/ronda
+/ronda.exe
+
+# Go temporary build and test files
+*.test
+*.out
+*.tmp
+
+# Generated scan reports
+/ronda-report.html
+/ronda-report.json
+
+# ==========================================
+# Local Environment
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+# Local cache
+.cache/
+
+# ==========================================
+# Signing Credentials
+# ==========================================
+
+*.p12
+*.pfx
+*_private.key
+*private*.key
+*_private.pem
+*private*.pem
+
+# RONDA release signing key (exact name from SIGNING.md section 3a)
+ronda-release-signing.key
