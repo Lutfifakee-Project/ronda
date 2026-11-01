@@ -39,10 +39,19 @@ jobs:
 
       - name: Assert the authoritative toolchain was selected
         run: |
-          want="go$(sed -n 's/^toolchain //p' go.mod)"
-          got=$(go env GOVERSION)
-          echo "go.mod toolchain: $want; selected: $got"
-          test "$got" = "$want" || { echo "CI toolchain $got != go.mod toolchain $want"; exit 1; }
+          want="$(sed -n 's/^toolchain //p' go.mod | tr -d '[:space:]')"
+          got="$(go env GOVERSION)"
+          if [ -z "$want" ]; then
+            echo "no toolchain directive found in go.mod; refusing to guess" >&2
+            exit 1
+          fi
+          echo "go.mod toolchain: $want"
+          echo "selected: $got"
+          if [ "$got" != "$want" ]; then
+            echo "Go toolchain check: FAIL (selected $got != declared $want)" >&2
+            exit 1
+          fi
+          echo "Go toolchain check: PASS"
 
       - name: Check formatting
         run: |
@@ -80,10 +89,19 @@ jobs:
 
       - name: Assert the authoritative toolchain was selected
         run: |
-          want="go$(sed -n 's/^toolchain //p' go.mod)"
-          got=$(go env GOVERSION)
-          echo "go.mod toolchain: $want; selected: $got"
-          test "$got" = "$want" || { echo "CI toolchain $got != go.mod toolchain $want"; exit 1; }
+          want="$(sed -n 's/^toolchain //p' go.mod | tr -d '[:space:]')"
+          got="$(go env GOVERSION)"
+          if [ -z "$want" ]; then
+            echo "no toolchain directive found in go.mod; refusing to guess" >&2
+            exit 1
+          fi
+          echo "go.mod toolchain: $want"
+          echo "selected: $got"
+          if [ "$got" != "$want" ]; then
+            echo "Go toolchain check: FAIL (selected $got != declared $want)" >&2
+            exit 1
+          fi
+          echo "Go toolchain check: PASS"
 
       - name: Build deterministic release candidate (amd64 + arm64)
         run: make release
@@ -103,7 +121,7 @@ jobs:
           ( cd dist && sha256sum -c SHA256SUMS )
           jq -e '.bomFormat == "CycloneDX" and .specVersion == 15 and (.metadata.component.name == "ronda")' dist/SBOM.cdx.json > /dev/null
           jq -e '.signingStatus == "NOT_CONFIGURED"' dist/release-manifest.json > /dev/null
-          want="go$(sed -n 's/^toolchain //p' go.mod)"
+          want="$(sed -n 's/^toolchain //p' go.mod | tr -d '[:space:]')"
           jq -e --arg want "$want" '.goVersion == $want' dist/release-manifest.json > /dev/null
           jq -e --arg want "$want" '.metadata.tools.components[0].version == $want' dist/SBOM.cdx.json > /dev/null
           echo "release artifacts validated (signing stays NOT_CONFIGURED, toolchain $want)"
