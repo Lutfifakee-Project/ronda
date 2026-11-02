@@ -209,11 +209,61 @@ if [ -n "$PUBHEX" ] && [ "${#PUBHEX}" -eq 64 ]; then
     make_fixture "$WORK/fx-signed2" "$GOOD_SUMS" "$SIG"
     expect_fail "wrong-key signature rejected" "signature verification FAILED" \
       sh "$INSTALLER" --source "$WORK/fx-signed2" --pubkey "$WORK/other.hex" --prefix "$WORK/p12"
+
+    # --pubkey with no signature file at all must stay fail-closed.
+    make_fixture "$WORK/fx-nosig" "$GOOD_SUMS"
+    expect_fail "missing signature rejected under pubkey" "SHA256SUMS.sig" \
+      sh "$INSTALLER" --source "$WORK/fx-nosig" --pubkey "$WORK/pub.hex" --prefix "$WORK/p15"
+
+    # A syntactically valid hex signature over the wrong content (here:
+    # garbage bytes) must never verify; the installer must die loudly.
+    MAL_SIG=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+    make_fixture "$WORK/fx-malsig" "$GOOD_SUMS" "$MAL_SIG"
+    expect_fail "malformed signature rejected under pubkey" "signature verification FAILED" \
+      sh "$INSTALLER" --source "$WORK/fx-malsig" --pubkey "$WORK/pub.hex" --prefix "$WORK/p16"
   else
     say "SKIP signature tests (openssl signing unavailable)"
   fi
 else
   say "SKIP signature tests (openssl key derivation unavailable)"
+fi
+
+# --- hex2bin byte-exactness (UTF-8 locale regression) ---------------------------
+# Under GNU awk in a UTF-8 locale, printf "%c" with a value > 127 renders that
+# character's multi-byte UTF-8 encoding (0x80 -> c2 80 ...), which corrupted
+# every binary blob hex2bin produced and made the installer reject a valid
+# Ed25519 signature. The fix pins LC_ALL=C on the awk subprocess inside
+# install.sh. These tests extract the REAL function from install.sh and assert
+# exact bytes in the ambient locale of this test run, so removing the guard
+# fails here in any UTF-8 locale (run with: LC_ALL=en_US.UTF-8 make
+# test-installer and gawk forced through PATH).
+HEX2BIN_FILE=$WORK/hex2bin.extracted.sh
+sed -n '/^  hex2bin()/,/^  }$/p' "$INSTALLER" > "$HEX2BIN_FILE"
+if [ -s "$HEX2BIN_FILE" ]; then
+  # shellcheck disable=SC1090
+  . "$HEX2BIN_FILE"
+  # Reproduction vector from the incident report.
+  GOT=$(hex2bin "80ff41c3a9" | od -An -v -tx1 | tr -d ' \n')
+  if [ "$GOT" = "80ff41c3a9" ]; then
+    say "ok   hex2bin keeps high bytes exact under the ambient locale"
+    PASS=$((PASS + 1))
+  else
+    say "FAIL hex2bin corrupts bytes under the ambient locale (got $GOT)"
+    FAIL=$((FAIL + 1))
+  fi
+  # Every representable byte value, in order, must round-trip untouched.
+  ALLHEX=$(awk 'BEGIN { for (i = 0; i < 256; i++) printf "%02x", i }')
+  GOTALL=$(hex2bin "$ALLHEX" | od -An -v -tx1 | tr -d ' \n')
+  if [ "$GOTALL" = "$ALLHEX" ]; then
+    say "ok   hex2bin round-trips all 256 byte values"
+    PASS=$((PASS + 1))
+  else
+    say "FAIL hex2bin round-trip of 00..ff mismatched"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  say "FAIL hex2bin could not be extracted from install.sh (layout changed?)"
+  FAIL=$((FAIL + 1))
 fi
 
 # --- live download path (no release published yet) -----------------------------

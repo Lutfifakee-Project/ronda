@@ -192,7 +192,12 @@ if [ -n "$PUBKEY" ]; then
     || die "--pubkey was given but openssl is not installed; signature verification is mandatory in this mode."
   [ -f "$TMP/SHA256SUMS.sig" ] || die "--pubkey was given but this release has no SHA256SUMS.sig; refusing to verify against a missing signature."
   hex2bin() {
-    printf '%s' "$1" | awk '
+    # LC_ALL=C is mandatory and must stay scoped to this awk subprocess: in a
+    # UTF-8 locale gawk renders printf "%c" with a value > 127 as that
+    # character's multi-byte UTF-8 encoding (0x80 -> c2 80), which corrupts
+    # every binary blob this function produces and breaks Ed25519
+    # verification. The surrounding locale of the user must not leak in here.
+    printf '%s' "$1" | LC_ALL=C awk '
       BEGIN { split("0 1 2 3 4 5 6 7 8 9 a b c d e f", v, " "); for (i in v) d[v[i]] = i - 1 }
       { for (i = 1; i < length($0); i += 2) printf "%c", d[substr($0, i, 1)] * 16 + d[substr($0, i + 1, 1)] }
     '
