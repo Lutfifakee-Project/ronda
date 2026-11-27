@@ -26,14 +26,23 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-cd "$HERE"
+# SOURCE_DIR: the application source tree to archive. Defaults to this
+# script's own repository, so plain `sh scripts/make-source-archive.sh`
+# behaves exactly as before. The release builder sets it to the tagged
+# application checkout, so the archive CONTENT stays the tagged source even
+# when this (tooling) script itself lives in a separate builder checkout.
+SOURCE_DIR=${SOURCE_DIR:-$HERE}
+if [ ! -f "$SOURCE_DIR/Makefile" ]; then
+  echo "make-source-archive: SOURCE_DIR='$SOURCE_DIR' is not an application source tree" >&2
+  exit 1
+fi
 
-VERSION=$(sed -n 's/^VERSION ?= //p' Makefile)
-RULES=$(sed -n 's/^RULES   ?= //p' Makefile)
+VERSION=$(sed -n 's/^VERSION ?= //p' "$SOURCE_DIR/Makefile")
+RULES=$(sed -n 's/^RULES   ?= //p' "$SOURCE_DIR/Makefile")
 DIST=${DIST:-dist-go127}
 OUTDIR="$DIST/source"
 TOPDIR="ronda-$VERSION"
-EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || echo 0)}
+EPOCH=${SOURCE_DATE_EPOCH:-$(git -C "$SOURCE_DIR" log -1 --format=%ct 2>/dev/null || echo 0)}
 GOVERSION=$("$@" 2>/dev/null || true)
 if [ -z "$GOVERSION" ]; then
   GOVERSION=$(go env GOVERSION 2>/dev/null || echo unknown)
@@ -44,8 +53,9 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/$TOPDIR" "$OUTDIR"
 
 # --- 1. collect the source tree (everything tracked or required, minus the
-#        documented exclusion categories) -----------------------------------
-tar \
+#        documented exclusion categories); staged from SOURCE_DIR, never from
+#        the builder checkout ----------------------------------------------
+tar -C "$SOURCE_DIR" \
   --exclude='./.git' \
   --exclude='./Codelyxa' \
   --exclude='./dist' \
@@ -134,7 +144,7 @@ manifest = {
     "exclusions": exclusions,
     "signingStatus": "NOT_CONFIGURED",
     "rebuild": [
-        "export PATH=<go1.27.3>/bin:$PATH   # or rely on GOTOOLCHAIN=auto",
+        "export PATH=<go1.27.4>/bin:$PATH   # or rely on GOTOOLCHAIN=auto",
         "gofmt -l . && go build ./... && go vet ./... && go test ./... -count=1",
         "make DIST=dist release              # SOURCE_DATE_EPOCH is inherited from this manifest",
     ],
@@ -184,7 +194,7 @@ outer = {
     "howToBuild": [
         "tar -xzf " + archive,
         "cd " + topdir,
-        "export PATH=<go1.27.3>/bin:$PATH   # or rely on GOTOOLCHAIN=auto",
+        "export PATH=<go1.27.4>/bin:$PATH   # or rely on GOTOOLCHAIN=auto",
         "gofmt -l . && go build ./... && go vet ./... && go test ./... -count=1",
         "make DIST=dist release",
     ],

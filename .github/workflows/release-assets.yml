@@ -1,0 +1,269 @@
+# RONDA official release-asset builder (manual dispatch only).
+#
+# Builds and validates ALL 12 approved v0.1.0 release assets directly from
+# the exact tagged source. Nothing is taken from a developer workspace or a
+# transfer package: binaries, archives, checksums, manifest, SBOM, source
+# archive and release notes are generated here using the project's own
+# packaging logic. The workflow never publishes a release, never creates or
+# moves a tag, never pushes, and holds no secrets: it uploads ONE review
+# artifact (ronda-v0.1.0-release-assets) that the owner downloads and
+# publishes manually with `gh release create`.
+#
+# TWO-CHECKOUT ARCHITECTURE (existing-tag compatibility): the v0.1.0 tag
+# predates the release-builder patch, so the tagged tree contains no builder
+# tooling. The application source is therefore checked out from the requested
+# tag into src/, while the release tooling (assemble-release-assets.sh and
+# the corrected make-source-archive.sh) is checked out from the default
+# branch into builder/. Compilation and packaging run with cwd/make -C in
+# src/ (the tagged tree's own Makefile, scripts and tools); only the archive
+# step invokes builder tooling, with SOURCE_DIR pointed at the tagged tree —
+# so the published source archive contains the tagged source, never
+# main-branch application changes. SOURCE_COMMIT and SOURCE_DATE_EPOCH are
+# derived from the tagged application checkout, and a validation step proves
+# the archive members are exactly the tagged tree + SOURCE-MANIFEST.json.
+#
+# Build metadata: the Makefile defaults COMMIT to "dev" on purpose for
+# developer builds; this release build overrides it with the exact tagged
+# commit (never "dev").
+#
+# Third-party actions are pinned to the same immutable commit SHAs used by
+# ci.yml (see the pinning note at the top of that file).
+name: release-assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Existing release tag to build from (checked out exactly; never a branch tip)"
+        required: false
+        default: "v0.1.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-release-assets:
+    name: build and validate the 12 release assets from the tagged source
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact tagged application source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (same pin as ci.yml)
+        with:
+          ref: ${{ inputs.source_ref }}
+          path: src
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Check out release-builder tooling from the default branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (same pin as ci.yml)
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: builder
+          persist-credentials: false
+
+      - name: Guard — exact tagged source identity and builder tooling presence
+        env:
+          SOURCE_REF_INPUT: ${{ inputs.source_ref }}
+        run: |
+          ref="$SOURCE_REF_INPUT"
+          case "$ref" in
+            v[0-9]*) : ;;
+            *) echo "refusing: source_ref must be a release tag (vX.Y.Z), got '$ref'" >&2; exit 1 ;;
+          esac
+          actual="$(git -C src describe --exact-match --tags HEAD 2>/dev/null || true)"
+          if [ "$actual" != "$ref" ]; then
+            echo "refusing: src HEAD $(git -C src rev-parse HEAD) is not exactly tag '$ref' (describe: '${actual:-none}')" >&2
+            echo "The release must be built from the tagged source, never from a branch tip." >&2
+            exit 1
+          fi
+          # The v0.1.0 tag predates the release-builder patch: the tagged tree
+          # has no builder tooling. Fail loudly if the patch is not on the
+          # default branch yet, or if the tooling is stale.
+          for tool in scripts/assemble-release-assets.sh scripts/make-source-archive.sh; do
+            test -f "builder/$tool" || {
+              echo "refusing: builder checkout lacks $tool — merge the release-builder patch into the default branch first" >&2
+              exit 1
+            }
+          done
+          if ! grep -q '<go1.27.4>' builder/scripts/make-source-archive.sh; then
+            echo "refusing: builder make-source-archive.sh is stale (missing the go1.27.4 toolchain-guidance fix)" >&2
+            exit 1
+          fi
+          commit="$(git -C src rev-parse HEAD)"
+          epoch="$(git -C src log -1 --format=%ct)"
+          echo "SOURCE_REF=$ref"          >> "$GITHUB_ENV"
+          echo "SOURCE_COMMIT=$commit"    >> "$GITHUB_ENV"
+          echo "SOURCE_DATE_EPOCH=$epoch" >> "$GITHUB_ENV"
+          echo "BUILD_COMMIT=$(git -C builder rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "Tagged application source: $ref @ $commit (SOURCE_DATE_EPOCH=$epoch)"
+          echo "Builder tooling: default branch @ $(git -C builder rev-parse HEAD)"
+
+      - name: Set up Go (toolchain directive from the tagged go.mod)
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6 (6.5.0, same pin as ci.yml)
+        with:
+          go-version-file: src/go.mod
+
+      - name: Assert the authoritative toolchain was selected
+        run: |
+          want="$(sed -n 's/^toolchain //p' src/go.mod | tr -d '[:space:]')"
+          got="$(go env GOVERSION)"
+          if [ -z "$want" ]; then
+            echo "no toolchain directive found in src/go.mod; refusing to guess" >&2
+            exit 1
+          fi
+          if [ "$got" != "$want" ]; then
+            echo "Go toolchain check: FAIL (selected $got != declared $want)" >&2
+            exit 1
+          fi
+          echo "Go toolchain check: PASS ($got)"
+
+      - name: Test the tagged source (fmt, vet, unit, race)
+        run: |
+          cd src
+          make lint
+          go test ./... -count=1
+          go test -race ./...
+
+      - name: Build the deterministic release candidate from the tagged source
+        run: |
+          make -C src DIST=dist release COMMIT="$SOURCE_COMMIT" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
+          jq -e --arg c "$SOURCE_COMMIT" '.commit == $c' src/dist/release-manifest.json > /dev/null
+          echo "release built from the tagged tree with embedded commit $SOURCE_COMMIT"
+
+      - name: Installer security and failure-mode tests
+        run: make -C src DIST=dist test-installer
+
+      - name: Determinism proof (two release builds byte-identical)
+        run: |
+          make -C src repro-check COMMIT="$SOURCE_COMMIT" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
+          rm -rf src/dist-repro-1 src/dist-repro-2
+
+      - name: Assemble the 12 official release assets (builder tooling × tagged source)
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/src
+          BUILDER_DIR: ${{ github.workspace }}/builder
+          OUTDIR: ${{ github.workspace }}/src/dist/upload
+        run: sh builder/scripts/assemble-release-assets.sh
+
+      - name: Determinism proof for assembled assets (two runs byte-identical)
+        env:
+          SOURCE_DIR: ${{ github.workspace }}/src
+          BUILDER_DIR: ${{ github.workspace }}/builder
+          OUTDIR: ${{ github.workspace }}/src/dist/upload
+        run: |
+          ( cd src/dist/upload && sha256sum * ) > /tmp/assets-run-1.txt
+          sh builder/scripts/assemble-release-assets.sh
+          ( cd src/dist/upload && sha256sum * ) > /tmp/assets-run-2.txt
+          diff /tmp/assets-run-1.txt /tmp/assets-run-2.txt
+          echo "assembled assets: two runs byte-identical"
+
+      - name: Validate the 12 release assets and the archive-identity assertions
+        run: |
+          # The approved asset list (HANDOFF-v0.1.0.md §7). The assembler
+          # already reconciles this set; this independent check documents the
+          # contract and fails loudly on any omission.
+          for f in main.sh \
+                   ronda-linux-amd64 \
+                   ronda-linux-arm64 \
+                   ronda-linux-amd64.tar.gz \
+                   ronda-linux-arm64.tar.gz \
+                   SHA256SUMS \
+                   release-manifest.json \
+                   SBOM.cdx.json \
+                   ronda-0.1.0-source.tar.gz \
+                   ronda-0.1.0-source.tar.gz.sha256 \
+                   ARCHIVE-MANIFEST.json \
+                   release-notes.md; do
+            test -f "src/dist/upload/$f" || { echo "missing release asset: $f" >&2; exit 1; }
+          done
+          n="$(ls -1 src/dist/upload | wc -l)"
+          [ "$n" = 12 ] || { echo "expected exactly 12 assets, found $n" >&2; exit 1; }
+          ( cd src/dist/upload && sha256sum -c SHA256SUMS )
+          ( cd src/dist/upload && sha256sum -c ronda-0.1.0-source.tar.gz.sha256 )
+          tar -tzf src/dist/upload/ronda-linux-amd64.tar.gz > /dev/null
+          tar -tzf src/dist/upload/ronda-linux-arm64.tar.gz > /dev/null
+          tar -tzf src/dist/upload/ronda-0.1.0-source.tar.gz > /dev/null
+          jq -e '.bomFormat == "CycloneDX" and .specVersion == 15 and (.metadata.component.name == "ronda")' \
+            src/dist/upload/SBOM.cdx.json > /dev/null
+          jq -e '.signingStatus == "NOT_CONFIGURED"' src/dist/upload/release-manifest.json > /dev/null
+          jq -e --arg c "$SOURCE_COMMIT" '.commit == $c' src/dist/upload/release-manifest.json > /dev/null
+          if jq -e '.commit == "dev"' src/dist/upload/release-manifest.json > /dev/null 2>&1; then
+            echo "refusing: release manifest claims commit 'dev'" >&2
+            exit 1
+          fi
+          want="$(sed -n 's/^toolchain //p' src/go.mod | tr -d '[:space:]')"
+          jq -e --arg want "$want" '.goVersion == $want' src/dist/upload/release-manifest.json > /dev/null
+          jq -e --arg want "$want" '.metadata.tools.components[0].version == $want' src/dist/upload/SBOM.cdx.json > /dev/null
+          jq -e '.topLevelDir == "ronda-0.1.0"' src/dist/upload/ARCHIVE-MANIFEST.json > /dev/null
+          # Archive content identity: exactly the tagged tree plus the self-
+          # describing SOURCE-MANIFEST.json. This catches builder tooling,
+          # untracked junk or main-branch-only application changes sneaking
+          # into the published source archive.
+          tree_n="$(git -C src ls-tree -r --name-only HEAD | wc -l)"
+          arc_n="$(tar -tzf src/dist/upload/ronda-0.1.0-source.tar.gz | grep -vc '/$')"
+          [ "$arc_n" = $((tree_n + 1)) ] || {
+            echo "refusing: archive members $arc_n != tagged tree $tree_n + SOURCE-MANIFEST.json" >&2
+            exit 1
+          }
+          tar -tzf src/dist/upload/ronda-0.1.0-source.tar.gz | sed 's|^ronda-0.1.0/||' \
+            | grep -v '^$' | grep -v '/$' | grep -v '^SOURCE-MANIFEST.json$' | sort > /tmp/arc-files.txt
+          git -C src ls-tree -r --name-only HEAD | sort > /tmp/tag-files.txt
+          diff /tmp/tag-files.txt /tmp/arc-files.txt
+          if tar -tzf src/dist/upload/ronda-0.1.0-source.tar.gz | grep -Eq 'assemble-release-assets|release-assets\.yml'; then
+            echo "refusing: builder tooling leaked into the source archive" >&2
+            exit 1
+          fi
+          tar -xOf src/dist/upload/ronda-0.1.0-source.tar.gz ronda-0.1.0/SOURCE-MANIFEST.json \
+            | jq -e --argjson n "$tree_n" '.fileCount == $n' > /dev/null
+          echo "all 12 release assets validated (tag $SOURCE_REF @ $SOURCE_COMMIT, tooling @ $BUILD_COMMIT, toolchain $want, signing NOT_CONFIGURED)"
+
+      - name: Binary smoke checks (amd64; arm64 is checksum- and archive-verified)
+        run: |
+          bin=src/dist/upload/ronda-linux-amd64
+          out="$($bin version)"
+          echo "$out"
+          echo "$out" | head -1 | grep -qx 'RONDA 0.1.0'
+          echo "$out" | grep -qx "Commit: $SOURCE_COMMIT"
+          echo "$out" | grep -qx "Go: $(sed -n 's/^toolchain //p' src/go.mod | tr -d '[:space:]')"
+          $bin --help | grep -Eq '^  (scan|persist|kernel|system|update|version|help) '
+          work="$(mktemp -d)"
+          printf '<?php\necho "hello";\n' > "$work/index.php"
+          if $bin scan "$work" > /dev/null 2>&1; then
+            echo "clean-directory scan exit=0: PASS"
+          else
+            echo "FAIL: clean-directory scan did not exit 0" >&2
+            exit 1
+          fi
+          rm -rf "$work"
+
+      - name: Record provenance and asset hashes in the job summary
+        run: |
+          {
+            echo "## RONDA release assets built from tagged source"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| source tag | \`$SOURCE_REF\` |"
+            echo "| source commit | \`$SOURCE_COMMIT\` |"
+            echo "| SOURCE_DATE_EPOCH | \`$SOURCE_DATE_EPOCH\` |"
+            echo "| builder tooling | \`default branch @ $BUILD_COMMIT\` |"
+            echo "| toolchain | \`$(sed -n 's/^toolchain //p' src/go.mod | tr -d '[:space:]')\` |"
+            echo "| signing | NOT_CONFIGURED (checksum-only; publication stays manual) |"
+            echo
+            echo '```'
+            ( cd src/dist/upload && sha256sum * )
+            echo '```'
+            echo
+            echo "Publish manually with \`gh release create\`; this workflow never publishes, tags or pushes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release assets for manual review (exactly the 12)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 (same pin as ci.yml)
+        with:
+          name: ronda-v0.1.0-release-assets
+          path: src/dist/upload/*
+          if-no-files-found: error
+          retention-days: 30
