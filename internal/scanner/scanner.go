@@ -121,6 +121,11 @@ func Scan(ctx context.Context, opts Options) (Result, error) {
 	res.DeniedDirs = walk.Denied
 	res.Truncated = walk.Truncated
 	res.FilesScanned = len(walk.Files)
+	if len(walk.SkippedTrees) > 0 {
+		res.Notes = append(res.Notes,
+			fmt.Sprintf("%d pseudo-filesystem trees were skipped and are not scanned (virtual or device backed, no deployable code): %s",
+				len(walk.SkippedTrees), strings.Join(walk.SkippedTrees, ", ")))
+	}
 	// One discovery pass finds every platform installation. WordPress
 	// keeps its legacy always-on verification; the other platforms are
 	// verified only when explicitly requested or --all was given.
@@ -266,17 +271,6 @@ func filterFindings(items []finding.Finding, platforms []string, assocRoots []st
 		}
 	}
 	return out
-}
-
-// wordpressRoots lists the installation roots discovered during the scan.
-func wordpressRoots(installs []wordpress.Result) []string {
-	roots := make([]string, 0, len(installs))
-	for i := 0; i < len(installs); i++ {
-		if root := strings.TrimSpace(installs[i].Root); root != "" {
-			roots = append(roots, root)
-		}
-	}
-	return roots
 }
 
 // hasContainingRoot reports whether path lies inside (or equals) any of the

@@ -20,14 +20,19 @@ type FileInfo struct {
 	Err error
 }
 
+// MaxWorkers is the hard upper bound on hashing concurrency. Explicit
+// worker counts above it are clamped so user input (e.g. --workers) cannot
+// bypass the bounded-concurrency guarantee.
+const MaxWorkers = 32
+
 // DefaultWorkers returns a conservative worker count for the host.
 func DefaultWorkers() int {
 	n := runtime.NumCPU() * 2
 	if n < 4 {
 		n = 4
 	}
-	if n > 32 {
-		n = 32
+	if n > MaxWorkers {
+		n = MaxWorkers
 	}
 	return n
 }
@@ -40,6 +45,9 @@ func HashFiles(ctx context.Context, paths []string, workers int) []FileInfo {
 	out := make([]FileInfo, len(paths))
 	if workers < 1 {
 		workers = DefaultWorkers()
+	}
+	if workers > MaxWorkers {
+		workers = MaxWorkers
 	}
 	if workers > len(paths) && len(paths) > 0 {
 		workers = len(paths)

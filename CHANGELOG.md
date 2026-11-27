@@ -9,11 +9,10 @@ modifies, deletes, quarantines or executes scanned files.
 
 ## [0.1.0] — local release candidate (NOT PUBLISHED)
 
-This is the first complete release candidate. It exists and has been
-validated **locally only**: nothing has been committed beyond the initial
-repository skeleton, no tag exists, and no public GitHub release has been
-created. The public repository therefore does not yet represent the
-complete accepted source (see "Publication blockers" in the release notes).
+This is the first complete release candidate. The complete source is
+committed and pushed to the public repository (origin/main), but it is
+still unpublished: no tag exists and no GitHub release has been created
+(see "Publication blockers" in the release notes).
 
 ### Added
 
@@ -54,14 +53,27 @@ complete accepted source (see "Publication blockers" in the release notes).
   candidate build, artifact validation; pinned to immutable action SHAs,
   minimal permissions, never publishes.
 
+### Fixed
+
+- A scan of a filesystem root (`ronda scan /`) no longer hangs forever:
+  discovery now refuses to walk the pseudo-filesystem trees /proc, /sys,
+  /dev and /run. Reading kernel pseudo-files such as /proc/<pid>/pagemap
+  can block indefinitely (observed on kernel 5.10.134), which made a real
+  scan of `/` never finish. Each skipped tree is disclosed in the report
+  notes instead of being silently omitted or claimed as scanned.
+- `ronda system` now follows the documented exit contract: exit 1 when the
+  audit surfaces actionable findings (LOW or above) from the hygiene checks
+  or the persistence engine, instead of always exiting 0. `system --help`
+  documents the exit codes.
+
 ### Security
 
 - Strict READ-ONLY scanning verified by before/after tree-digest evidence.
 - No telemetry; network access only for explicitly invoked feed refresh and
   update checks, restricted to official hosts over HTTPS with bounded
   redirects.
-- Release toolchain pinned to a supported security-patched Go (go1.27.3)
-  and enforced for release builds.
+- Release toolchain pinned to a supported security-patched Go (go1.27.4,
+  upgraded from go1.27.3 for GO-2026-6859) and enforced for release builds.
 
 ### Known limitations (unchanged by this release)
 

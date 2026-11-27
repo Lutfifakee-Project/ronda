@@ -17,8 +17,6 @@ const (
 	Extra Status = "EXTRA"
 	// Suspicious means suspicious code or behaviour indicators were found.
 	Suspicious Status = "SUSPICIOUS"
-	// Vulnerable means a vulnerability is supported by sufficient evidence.
-	Vulnerable Status = "VULNERABLE"
 	// Unverified means no suitable trusted baseline was available.
 	Unverified Status = "UNVERIFIED"
 )

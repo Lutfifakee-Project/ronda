@@ -47,3 +47,58 @@ func mustWrite(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestWalkSkipsPseudoTreeRoot(t *testing.T) {
+	pseudo := t.TempDir()
+	orig := PseudoTrees
+	PseudoTrees = []string{pseudo}
+	defer func() { PseudoTrees = orig }()
+
+	mustWrite(t, filepath.Join(pseudo, "shell.php"), "<?php eval($_POST['a']); ?>")
+
+	res, err := Walk(context.Background(), pseudo, Options{IncludeHidden: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Files) != 0 {
+		t.Fatalf("pseudo root contents must not be scanned, got %v", res.Files)
+	}
+	if len(res.SkippedTrees) != 1 || res.SkippedTrees[0] != pseudo {
+		t.Fatalf("skipped tree must be disclosed, got %v", res.SkippedTrees)
+	}
+}
+
+func TestWalkSkipsNestedPseudoTreeButScansSiblings(t *testing.T) {
+	root := t.TempDir()
+	pseudo := filepath.Join(root, "proc")
+	orig := PseudoTrees
+	PseudoTrees = []string{pseudo}
+	defer func() { PseudoTrees = orig }()
+
+	mustWrite(t, filepath.Join(pseudo, "pagemap"), "would block")
+	mustWrite(t, filepath.Join(root, "site.php"), "<?php echo 1; ?>")
+
+	res, err := Walk(context.Background(), root, Options{IncludeHidden: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Files) != 1 || res.Files[0] != filepath.Join(root, "site.php") {
+		t.Fatalf("sibling must still be scanned, got %v", res.Files)
+	}
+	if len(res.SkippedTrees) != 1 || res.SkippedTrees[0] != pseudo {
+		t.Fatalf("nested pseudo tree must be disclosed, got %v", res.SkippedTrees)
+	}
+}
+
+func TestIsPseudoTreeExactMatchOnly(t *testing.T) {
+	orig := PseudoTrees
+	PseudoTrees = []string{"/proc"}
+	defer func() { PseudoTrees = orig }()
+
+	if !isPseudoTree("/proc") || !isPseudoTree("/proc/") {
+		t.Fatal("/proc must be recognised")
+	}
+	if isPseudoTree("/home/user/proc") || isPseudoTree("/proctest") || isPseudoTree("") {
+		t.Fatal("non-exact paths must not be treated as pseudo trees")
+	}
+}

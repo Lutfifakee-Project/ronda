@@ -11,7 +11,7 @@
 #
 # Toolchain: setup-go v6 reads BOTH the `go` and `toolchain` directives from
 # go.mod, so CI installs exactly the authoritative release toolchain declared
-# there (currently go1.27.3, a supported security-patched release). A manual
+# there (currently go1.27.4, a supported security-patched release). A manual
 # assertion below re-checks the selection so a setup-go behavior change can
 # never silently build the release with a different toolchain.
 name: ci
@@ -70,6 +70,19 @@ jobs:
 
       - name: Test
         run: go test ./... -count=1
+
+      - name: Coverage summary (informational)
+        run: go test ./... -count=1 -cover
+
+      # govulncheck scans the source and stdlib against the live Go
+      # vulnerability database, so its value depends on a time-dependent DB:
+      # unlike the action SHAs above, the tool itself is deliberately used
+      # unpinned. This job never publishes anything; a failure here is a
+      # signal to review, not an automated release gate.
+      - name: Vulnerability scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
       - name: Race detector
         run: go test -race ./...

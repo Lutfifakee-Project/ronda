@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Lutfifakee-Project/ronda/internal/finding"
-	"github.com/Lutfifakee-Project/ronda/internal/platforms/wordpress"
 )
 
 func phpFinding(path string) finding.Finding {
@@ -207,19 +206,5 @@ func TestHasContainingRootMultipleInstalls(t *testing.T) {
 	}
 	if hasContainingRoot(nil, "/srv/site1/x.php") {
 		t.Fatal("empty root list accepted a path")
-	}
-}
-
-func TestWordpressRootsFromResults(t *testing.T) {
-	roots := wordpressRoots([]wordpress.Result{
-		{Root: "/srv/site1"},
-		{Root: "  "},
-		{Root: "/srv/site2"},
-	})
-	if len(roots) != 2 || roots[0] != "/srv/site1" || roots[1] != "/srv/site2" {
-		t.Fatalf("unexpected roots: %v", roots)
-	}
-	if n := len(wordpressRoots(nil)); n != 0 {
-		t.Fatalf("expected no roots, got %d", n)
 	}
 }

@@ -11,7 +11,7 @@ toolchain is selected, enforced, and upgraded.
 | Layer | Where declared | Current value | Meaning |
 |---|---|---|---|
 | Module language level | `go` directive in go.mod | `go 1.21` | Minimum language/stdlib semantics the source requires. This is a floor, not a build instruction. |
-| Release build toolchain | `toolchain` directive in go.mod | `go1.27.3` | The exact toolchain that builds release artifacts. Selected automatically by GOTOOLCHAIN=auto; verified by `make check-toolchain`. |
+| Release build toolchain | `toolchain` directive in go.mod | `go1.27.4` | The exact toolchain that builds release artifacts. Selected automatically by GOTOOLCHAIN=auto; verified by `make check-toolchain`. |
 | CI toolchain | `.github/workflows/ci.yml` | setup-go v6 (SHA-pinned), reads go.mod | CI installs the `toolchain` directive's version and asserts the selection. |
 
 The compiled binary never needs Go at runtime.
@@ -80,7 +80,7 @@ with a fake `go` shim, so no second Go installation is required.
    official SHA-256 from the same page's JSON feed.
 2. Download the archive only from `https://go.dev/dl/`, verify the SHA-256,
    and install it alongside (not over) the previous toolchain.
-3. Change exactly one line in go.mod: `toolchain go1.27.3` becomes
+3. Change exactly one line in go.mod: `toolchain go1.27.4` becomes
    `toolchain go1.<next>.<patch>`. Do not change the `go 1.21` language
    directive unless the source genuinely needs newer language features.
 4. `make lint && make test && make race`, then `make repro-check`.

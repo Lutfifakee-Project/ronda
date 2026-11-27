@@ -7,10 +7,10 @@
 #   RulesVersion default; a mismatch would make release binaries misreport
 #   their detection rules and is rejected below.
 #
-#   COMMIT stays "dev" unless explicitly overridden. The canonical working
-#   tree is mostly untracked (one initial commit contains only LICENSE and
-#   README), so a git-derived revision would misrepresent the build; embed
-#   it only when the full source is actually committed and tagged.
+#   COMMIT stays "dev" unless explicitly overridden. A git-derived revision
+#   would embed whichever HEAD happened to be checked out; the real revision
+#   must be embedded only when building from the tagged, published commit,
+#   so release binaries never claim an untagged commit id.
 #
 #   DATE is derived from SOURCE_DATE_EPOCH for release builds so artifacts
 #   are reproducible; it stays "unknown" for plain developer builds.

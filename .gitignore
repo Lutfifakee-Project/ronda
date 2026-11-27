@@ -21,6 +21,21 @@
 *.out
 *.tmp
 
+# Profiling artifacts (pprof, trace) - *.out already covers coverage profiles
+*.prof
+*.pprof
+trace.out
+
+# Local databases and runtime data (defensive: RONDA itself uses none)
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor swap and backup files
+*~
+*.swp
+*.bak
+
 # Generated scan reports
 /ronda-report.html
 /ronda-report.json

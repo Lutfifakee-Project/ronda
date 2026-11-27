@@ -7,7 +7,7 @@
 //
 //	go run ./tools/genmanifest \
 //	  -dist dist -version 0.1.0 -rules builtin-5 -commit dev \
-//	  -date 2026-11-01T00:00:00Z -go-version go1.27.3 \
+//	  -date 2026-11-01T00:00:00Z -go-version go1.27.4 \
 //	  -signing-status NOT_CONFIGURED -ldflags "-s -w ..." \
 //	  -source-date-epoch 1798000000
 package main

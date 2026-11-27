@@ -16,7 +16,7 @@
 //
 //	go run ./tools/gensbom -out dist/SBOM.cdx.json \
 //	  -version 0.1.0 -rules builtin-5 -commit dev \
-//	  -go-version go1.27.3 -timestamp 2026-11-01T00:00:00Z
+//	  -go-version go1.27.4 -timestamp 2026-11-01T00:00:00Z
 package main
 
 import (

@@ -52,19 +52,42 @@ and they only ever touch RONDA's own installation path.
 
 - Linux (amd64 or arm64).
 - No Go, PHP or Python runtime is required to run the binary.
-- `curl` or `wget` only for downloads; `sha256sum` for verification;
-  `openssl` only if you use installer signature verification.
+- `curl` or `wget` only for downloads; standard userland `sha256sum`, `awk`
+  and `od` for verification; `openssl` only if you use installer signature
+  verification.
 
 ## Installation
 
-Download the official release binaries from the project's GitHub releases
-page, verify them, and run the installer from a file (never pipe a remote
-script into a shell):
+### Quick Start
+
+Install the latest official release with one line (Linux amd64/arm64):
+
+    curl -fsSL https://github.com/Lutfifakee-Project/ronda/releases/latest/download/main.sh | sh
+
+The installer never runs sudo and never asks for it automatically: as root
+it installs to `/usr/local/bin/ronda`, otherwise to `$HOME/.local/bin/ronda`
+(it tells you how to add that directory to your PATH when needed). It
+verifies the SHA-256 checksum against the published `SHA256SUMS` before
+anything is executed, checks the artifact's ELF architecture, and keeps the
+previous binary as `ronda.old` for rollback.
+
+Note: this URL resolves once the first GitHub release is published. Until
+then use the review-first installation below or `--source` with a local
+release directory.
+
+### Review-first installation
+
+Recommended if you prefer to read the installer before running it, or when
+the target machine is offline / air-gapped:
 
     curl -fsSL -o install.sh https://raw.githubusercontent.com/Lutfifakee-Project/ronda/main/install.sh
     less install.sh                      # review it first
     sh install.sh                        # system-wide if root, else ~/.local/bin
     sh install.sh --prefix "$HOME/.local"  # explicit user-local install
+    sh install.sh --source ./dist        # install from a local release directory
+
+`main.sh` published with each release is a generated copy of the repository
+`install.sh` (same checksum-verified flow, no extra steps in between).
 
 The installer:
 
@@ -80,6 +103,22 @@ Options: `--prefix DIR`, `--version TAG`, `--arch amd64|arm64`,
 `--source DIR` (install from a local release directory - for offline or
 air-gapped VPS), `--pubkey FILE`, `--help`.
 
+Release assets keep stable names across versions so `main.sh` can always
+find them: `main.sh` (installer copy of `install.sh`), `ronda-linux-amd64`,
+`ronda-linux-arm64`, `SHA256SUMS`.
+
+### Uninstalling
+
+RONDA installs a single binary and nothing else. Remove it (and any kept
+rollback copy) directly:
+
+    rm /usr/local/bin/ronda            # root installation
+    rm ~/.local/bin/ronda ~/.local/bin/ronda.old   # user-local installation
+
+If you are unsure where it lives: `command -v ronda`. RONDA never writes
+outside its installation path, its caches (under ~/.cache/ronda) and the
+reports you explicitly asked for, so there is nothing else to clean up.
+
 ### Verifying release integrity
 
 Checksums (always enforced) detect corruption; they do not authenticate the
@@ -94,7 +133,7 @@ configured in a future release, `ronda update --install` becomes available.
 
 Building from source needs a Go toolchain as declared in `go.mod`: the
 module language level is `go 1.21` and the authoritative release toolchain
-is `go1.27.3` (a supported, security-patched release; see docs/TOOLCHAIN.md).
+is `go1.27.4` (a supported, security-patched release; see docs/TOOLCHAIN.md).
 With the default `GOTOOLCHAIN=auto`, any Go >= 1.21 automatically selects
 the declared toolchain; the release targets refuse to build with a different
 one. The resulting binary is standalone: it never needs Go on the target VPS.
@@ -172,7 +211,7 @@ system is secure - check the data trust level in the report
 
 Formats: terminal (default), JSON (`--format json`), HTML
 (`--format html --output report.html`). Findings carry a status
-(CLEAN, MODIFIED, MISSING, EXTRA, SUSPICIOUS, VULNERABLE, AFFECTED, FIXED,
+(CLEAN, MODIFIED, MISSING, EXTRA, SUSPICIOUS, AFFECTED, FIXED,
 NOT_AFFECTED, UNDER_INVESTIGATION, UNVERIFIED), a severity
 (CRITICAL, HIGH, MEDIUM, LOW, INFO), a confidence level and the data trust
 level of any feed used. Reports never contain passwords, keys or tokens;
@@ -196,12 +235,29 @@ credentials found during persistence scans are redacted.
 
 RONDA reports honestly what it can and cannot verify:
 
-- Drupal, Joomla and Laravel release baselines are not implemented; their
-  results are analysis, not proof of integrity.
+- Laravel package integrity is UNVERIFIED by design: Composer metadata
+  (composer.json, composer.lock, vendor/composer/installed.json) is parsed
+  statically, and the dist URLs and hashes inside a lock file are
+  target-controlled metadata that RONDA never fetches or trusts. WordPress,
+  Drupal and Joomla DO verify against official release artifacts (checksum
+  API / digest-authenticated release archives with per-file manifests).
+  Lock files alone never prove installed files are unchanged.
 - RPM package ownership is UNVERIFIED: Rocky Linux, Fedora and
   SUSE/openSUSE CVE matching is not implemented. These distributions are
   never described as fully scanned.
 - Unknown distributions return UNVERIFIED data.
+- A directory that cannot be read is never reported clean: the scan
+  report carries an explicit note ("coverage is incomplete") and unreadable
+  files appear in the report's errors with `permission denied`. Exit codes
+  stay findings-based: 0 = no actionable findings (with disclosure), 1 =
+  actionable findings, 2 = invalid usage.
+- The threat scan never walks the pseudo-filesystem trees /proc, /sys,
+  /dev and /run. They hold no deployable code, and reading some kernel
+  pseudo-files (a per-process pagemap on kernel 5.10, for example) blocks
+  forever, which hung a scan of `/` in real testing. Every skipped tree is
+  disclosed in the report notes; `system` and `kernel` still read the
+  specific procfs artifacts they need through their own bounded readers.
+
 - No full VM-based distribution assessment was performed during validation.
 - `ronda update` is check-only in this build: signature verification is
   NOT_CONFIGURED, so authenticated self-replacement stays disabled by

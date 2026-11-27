@@ -34,6 +34,11 @@ func printSystemHelp() {
 		"EXAMPLES:",
 		"  ronda system",
 		"",
+		"EXIT CODES:",
+		"  0  no actionable findings",
+		"  1  actionable findings reported",
+		"  2  invalid usage",
+		"",
 		"LIMITATIONS:",
 		"  Some checks require root; locations that cannot be read are",
 		"  reported as denied or UNVERIFIED, never as clean.",
@@ -66,8 +71,10 @@ func runSystem(args []string) int {
 	fmt.Fprintln(os.Stdout)
 
 	total := len(rep.Findings) + len(persist.Findings)
-	if total == 0 {
+	if total == 0 && len(rep.Errors) == 0 {
 		fmt.Fprintln(os.Stdout, "[OK] No system security issues detected.")
+	} else if total == 0 {
+		fmt.Fprintln(os.Stdout, "[i] No findings in the inspected scope; some checks could not be completed (see below).")
 	} else {
 		// Legacy checks first (stable output shape), then persistence
 		// findings by severity.
@@ -111,6 +118,12 @@ func runSystem(args []string) int {
 	if persist.DeniedCount > 0 {
 		fmt.Fprintf(os.Stdout, "\n%d persistence artifact location(s) could not be read; coverage is incomplete.\n", persist.DeniedCount)
 	}
+	if len(rep.Errors) > 0 {
+		fmt.Fprintf(os.Stdout, "\n%d system check location(s) could not be read; coverage is incomplete:\n", len(rep.Errors))
+		for _, e := range rep.Errors {
+			fmt.Fprintln(os.Stdout, "    "+e)
+		}
+	}
 	if persist.UnverifiedCount > 0 {
 		fmt.Fprintf(os.Stdout, "%d persistence scope(s) are UNVERIFIED, not clean.\n", persist.UnverifiedCount)
 	}
@@ -134,6 +147,25 @@ func runSystem(args []string) int {
 		}
 	}
 
+	// Exit contract (documented in the help screen and README): exit 1 when
+	// the audit surfaced actionable findings (severity LOW or above), from
+	// either the legacy hygiene checks or the persistence engine. INFO-only
+	// output and unreadable-location disclosures still exit 0. This keeps
+	// `ronda system` consistent with `ronda persist`, which runs the same
+	// engine against the same live host.
+	actionable := false
+	for _, f := range rep.Findings {
+		if severityRank(f.Severity) >= severityRank("LOW") {
+			actionable = true
+			break
+		}
+	}
+	if !actionable && persist.HasActionable() {
+		actionable = true
+	}
+	if actionable {
+		return ExitFindings
+	}
 	return ExitOK
 }
 

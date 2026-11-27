@@ -44,7 +44,7 @@ func printScanHelp() {
 		"                 target treated as a root filesystem",
 		"  --format       Report format: terminal (default), html, json",
 		"  --output       Write the report to this path",
-		"  --workers      Number of concurrent hashing workers",
+		"  --workers      Number of concurrent hashing workers (clamped to 32)",
 		"  --wp-locale    WordPress package locale override (e.g. en_US, id_ID)",
 		"  --offline      Use only the local checksum cache (no network)",
 		"",

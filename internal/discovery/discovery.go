@@ -31,6 +31,12 @@ type Result struct {
 	Root   string
 	Files  []string
 	Denied []string
+	// SkippedTrees lists pseudo-filesystem roots (e.g. /proc) the walk
+	// refused to traverse. Their contents are virtual or device backed,
+	// never hold deployable code, and reading some kernel pseudo-files
+	// (a per-process pagemap, for example) can block forever. Every
+	// skipped tree is disclosed to the caller, never silent.
+	SkippedTrees []string
 	// Truncated is true when cancellation stopped the walk early.
 	Truncated bool
 }
@@ -38,6 +44,28 @@ type Result struct {
 // DefaultSkipDirs are directories that rarely contain deployable code
 // and dominate scan time when traversed.
 var DefaultSkipDirs = []string{".git", ".svn", ".hg", "node_modules", "vendor/cache"}
+
+// PseudoTrees are virtual or device-backed filesystems mounted at fixed
+// absolute paths. They contain no deployable code, and reading some kernel
+// pseudo-files can block indefinitely (hashing /proc/<pid>/pagemap under
+// kernel 5.10 never returns, which hung a scan of / until the process was
+// killed). The threat scan therefore never walks them. The system and
+// kernel inspections read the specific procfs artifacts they need through
+// their own bounded readers instead. Override in tests only.
+var PseudoTrees = []string{"/proc", "/sys", "/dev", "/run"}
+
+// isPseudoTree reports whether path is exactly one of the pseudo-filesystem
+// roots. Only exact absolute matches count: a user's ~/proc directory is
+// ordinary data and must still be scanned.
+func isPseudoTree(path string) bool {
+	c := filepath.Clean(path)
+	for _, t := range PseudoTrees {
+		if c == t {
+			return true
+		}
+	}
+	return false
+}
 
 // Walk enumerates regular files under root.
 //
@@ -57,6 +85,14 @@ func Walk(ctx context.Context, root string, opts Options) (*Result, error) {
 	}
 
 	res := &Result{Root: absRoot}
+	if isPseudoTree(absRoot) {
+		// The scan root itself is a pseudo-filesystem: nothing here is
+		// scanned, and the caller must disclose that instead of reporting
+		// an empty scan as full coverage.
+		res.SkippedTrees = append(res.SkippedTrees, absRoot)
+		return res, nil
+	}
+
 	seen := make(map[string]bool)
 	skip := make(map[string]bool, len(DefaultSkipDirs)+len(opts.SkipDirs))
 	for _, d := range DefaultSkipDirs {
@@ -121,6 +157,10 @@ func Walk(ctx context.Context, root string, opts Options) (*Result, error) {
 			}
 
 			if entry.IsDir() {
+				if isPseudoTree(full) {
+					res.SkippedTrees = append(res.SkippedTrees, full)
+					continue
+				}
 				if skip[name] {
 					continue
 				}
@@ -139,5 +179,6 @@ func Walk(ctx context.Context, root string, opts Options) (*Result, error) {
 	walk(absRoot, 0)
 	sort.Strings(res.Files)
 	sort.Strings(res.Denied)
+	sort.Strings(res.SkippedTrees)
 	return res, nil
 }

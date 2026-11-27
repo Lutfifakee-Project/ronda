@@ -43,7 +43,7 @@ func wpFindings(wp wordpress.Result) []finding.Finding {
 			Title:    fmt.Sprintf("WordPress core files missing: %d", len(wp.MissingFiles)),
 			Platform: "wordpress",
 			Path:     wp.Root,
-			Evidence: summarizeCorePaths(wp.MissingFiles),
+			Evidence: summarizeCoreFiles(wp.MissingFiles),
 		})
 	}
 
@@ -75,14 +75,6 @@ func wpFindings(wp wordpress.Result) []finding.Finding {
 const maxEvidenceItems = 5
 
 func summarizeCoreFiles(items []wordpress.CoreFile) string {
-	paths := make([]string, 0, len(items))
-	for i := 0; i < len(items); i++ {
-		paths = append(paths, items[i].Path)
-	}
-	return summarizeStrings(paths)
-}
-
-func summarizeCorePaths(items []wordpress.CoreFile) string {
 	paths := make([]string, 0, len(items))
 	for i := 0; i < len(items); i++ {
 		paths = append(paths, items[i].Path)

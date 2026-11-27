@@ -1,13 +1,15 @@
 # RONDA 0.1.0 — Release Notes (LOCAL RELEASE CANDIDATE)
 
-**Status: LOCAL RELEASE READY — PUBLICATION BLOCKED.** This document
-describes a locally validated release candidate. It is not a published
-release: nothing has been uploaded to GitHub Releases, no tag exists, and
-the public repository does not yet contain the complete application source.
+**Status: LOCAL RELEASE READY — PUBLICATION PENDING (owner action).** This
+document describes a locally validated release candidate. It is not a
+published release: nothing has been uploaded to GitHub Releases and no tag
+exists. The complete application source IS committed and pushed —
+origin/main matches the local HEAD (7e2396f); tagging and publishing
+remain owner decisions.
 
 - Application version: 0.1.0 (unchanged; never bumped automatically)
 - Detection rules: builtin-5
-- Release toolchain: go1.27.3 (supported, security-patched; sha256-verified
+- Release toolchain: go1.27.4 (supported, security-patched; sha256-verified
   download from go.dev)
 - Validated targets: Linux AMD64 and Linux ARM64 (static, stripped, ELF64)
 - Signing: **NOT_CONFIGURED** — checksum-verified only, publisher identity
@@ -68,7 +70,7 @@ the public repository does not yet contain the complete application source.
 
 ## Verification status of this candidate
 
-- 584 Go test functions across 20 test packages, `-count=1` and `-race`
+- 591 Go test functions across 21 test packages, `-count=1` and `-race`
   green; installer suite 20/20; updater suite green; toolchain enforcement
   suite 12/12; govulncheck (source + both binaries) clean.
 - Three independent release builds byte-identical (binaries, archives,
@@ -78,10 +80,10 @@ the public repository does not yet contain the complete application source.
 
 ## Publication blockers (must be resolved by the owner before release)
 
-1. The complete accepted source is still untracked in Git; the public
-   repository contains only the initial skeleton. The source must be
-   committed/pushed by an authorized person — no commit or push has been
-   performed or authorized from the agent workspace.
+1. [RESOLVED] The complete source is committed and pushed: origin/main
+   matches the local HEAD (7e2396f, "fix(installer): preserve Ed25519
+   bytes under UTF-8 locales"). Publication now needs only a tag, a
+   GitHub release, and the owner's signing decision (blockers 2-4).
 2. Production Ed25519 signing is NOT_CONFIGURED; without it the release can
    ship checksum-only (explicitly labeled) or wait for SIGNING.md steps.
 3. No release tag exists; tagging is an owner decision.
@@ -96,3 +98,26 @@ the public repository does not yet contain the complete application source.
 
 Signature verification will print NOT_CONFIGURED until a production key is
 embedded; see SIGNING.md for the owner procedure and for what changes then.
+
+## Post-publication verification checklist (owner)
+
+Run these only AFTER the release exists on GitHub; before publication none of
+them can pass:
+
+1. GitHub Release `v0.1.0` exists and is public.
+2. The tag points to the approved source commit.
+3. All release assets are present: `main.sh`, `ronda-linux-amd64`,
+   `ronda-linux-arm64`, `ronda-linux-amd64.tar.gz`, `ronda-linux-arm64.tar.gz`,
+   `SHA256SUMS`, `release-manifest.json`, `SBOM.cdx.json`,
+   `ronda-0.1.0-source.tar.gz` (+`.sha256`, `ARCHIVE-MANIFEST.json`),
+   `release-notes.md`.
+4. `main.sh` is reachable at
+   https://github.com/Lutfifakee-Project/ronda/releases/latest/download/main.sh
+5. `ronda-linux-amd64` downloads correctly from the same `latest/download` URL.
+6. `ronda-linux-arm64` downloads correctly.
+7. `sha256sum -c SHA256SUMS` passes on the downloaded assets.
+8. The exact Quick Start command works on a clean Linux machine (no Go, no
+   compiler): `curl -fsSL https://github.com/Lutfifakee-Project/ronda/releases/latest/download/main.sh | sh`
+9. The installed binary reports `RONDA 0.1.0` (`ronda version`).
+10. A basic scan (`ronda scan <dir>`, `ronda persist`) works after installation
+    and exits 0/1/2 per the documented contract.

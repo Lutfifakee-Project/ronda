@@ -130,6 +130,17 @@ if [ ! -w "$DEST_DIR" ]; then
   die "$DEST_DIR is not writable by the current user. Re-run with --prefix \"\$HOME/.local\", or use sudo explicitly if you intend a system-wide install."
 fi
 
+# --- verification prerequisites ---------------------------------------------
+# Both acquisition paths (--source and download) verify SHA-256 checksums,
+# and every install runs the ELF architecture check. Refuse early and
+# clearly when the verification toolset is missing instead of failing half
+# way through with an opaque "command not found".
+
+for tool in sha256sum awk od; do
+  command -v "$tool" >/dev/null 2>&1 \
+    || die "$tool is required to verify the release but was not found. Install coreutils/util-linux, or install from a trusted local build."
+done
+
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/ronda-install.XXXXXX")
 
 # --- acquisition ------------------------------------------------------------

@@ -32,3 +32,33 @@ func TestHashMissingFileSetsError(t *testing.T) {
 		t.Fatal("expected an error for missing file")
 	}
 }
+
+func TestDefaultWorkersBounded(t *testing.T) {
+	n := DefaultWorkers()
+	if n < 1 || n > MaxWorkers {
+		t.Fatalf("DefaultWorkers=%d outside [1,%d]", n, MaxWorkers)
+	}
+}
+
+func TestHashFilesClampsWorkersToUpperBound(t *testing.T) {
+	// A pathological --workers value must never translate into an unbounded
+	// goroutine pool: the pool is clamped to MaxWorkers no matter the input.
+	paths := make([]string, 8)
+	for i := range paths {
+		paths[i] = filepath.Join(t.TempDir(), "f")
+		if err := os.WriteFile(paths[i], []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, workers := range []int{0, -5, MaxWorkers + 1, 1 << 20} {
+		res := HashFiles(context.Background(), paths, workers)
+		if len(res) != len(paths) {
+			t.Fatalf("workers=%d: got %d results, want %d", workers, len(res), len(paths))
+		}
+		for _, r := range res {
+			if r.Err != nil {
+				t.Fatalf("workers=%d: unexpected error %v", workers, r.Err)
+			}
+		}
+	}
+}
