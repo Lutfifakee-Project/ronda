@@ -1,4 +1,4 @@
-# RONDA - Local Linux Security Scanner
+# RONDA — Local Security Scanner
 
 Scan. Detect. Protect.
 
@@ -26,8 +26,10 @@ and they only ever touch RONDA's own installation path.
 - Recursive file discovery with bounded concurrency.
 - Streaming SHA-256 hashing of every regular file.
 - PHP static analysis for webshells, obfuscation and dangerous behaviours.
-- Platform detection and integrity scanning (WordPress, Drupal, Joomla,
-  Laravel, custom PHP).
+- Platform detection and integrity scanning: WordPress, Drupal and Joomla
+  verify installed files against official release artifacts; Laravel and
+  custom PHP projects are detected and inventoried (Laravel package
+  integrity is UNVERIFIED by design — see Limitations).
 - Linux kernel CVE intelligence against authoritative vendor security data
   (Debian Security Tracker, Ubuntu OSV, Alpine secdb, Arch security,
   Red Hat security data, AlmaLinux OSV) with distribution-aware package

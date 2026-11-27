@@ -1,11 +1,12 @@
-# RONDA 0.1.0 — Release Notes (LOCAL RELEASE CANDIDATE)
+# RONDA 0.1.0 — Release Notes
 
-**Status: LOCAL RELEASE READY — PUBLICATION PENDING (owner action).** This
-document describes a locally validated release candidate. It is not a
-published release: nothing has been uploaded to GitHub Releases and no tag
-exists. The complete application source IS committed and pushed —
-origin/main matches the local HEAD (7e2396f); tagging and publishing
-remain owner decisions.
+**Status: RELEASE READY — publication sequence in progress (owner action).**
+This document describes the final validated v0.1.0 state. The complete
+application source is committed and pushed: origin/main contains the
+release state commit (b921bde, "RONDA v0.1.0: release-ready engineering,
+tests, docs, evidence") plus this documentation-alignment commit; the
+annotated tag v0.1.0 must point to the final commit that passed CI, and
+tagging and publishing remain owner actions.
 
 - Application version: 0.1.0 (unchanged; never bumped automatically)
 - Detection rules: builtin-5
@@ -24,8 +25,11 @@ remain owner decisions.
   matching, bounded source-to-sink flows, behavior chains and polyglot
   indicators.
 - Platform integrity scanning for WordPress (official-checksum core
-  comparison, static version reading, locale variants), Drupal, Joomla,
-  Laravel and custom PHP projects.
+  comparison, static version reading, locale variants), Drupal and Joomla
+  (verified against official release artifacts with per-file manifests).
+  Laravel and custom PHP projects are detected and inventoried; Laravel
+  package integrity is UNVERIFIED by design (Composer lock metadata is
+  target-controlled and never fetched or trusted).
 - Linux persistence/backdoor detection across systemd, cron/anacron/at,
   SSH, shell startup, dynamic linker, PAM, kernel modules, udev and local
   accounts, with cross-artifact correlation, MITRE ATT&CK mapping and
@@ -70,9 +74,10 @@ remain owner decisions.
 
 ## Verification status of this candidate
 
-- 591 Go test functions across 21 test packages, `-count=1` and `-race`
-  green; installer suite 20/20; updater suite green; toolchain enforcement
-  suite 12/12; govulncheck (source + both binaries) clean.
+- 594 Go test functions across 21 test packages, `-count=1` and `-race`
+  green (re-verified on the final state); installer suite 24/24; updater
+  suite green; toolchain enforcement suite 13/13; govulncheck (source +
+  both binaries) clean.
 - Three independent release builds byte-identical (binaries, archives,
   SHA256SUMS, manifest, SBOM).
 - Source archive (`dist-go127/source/`) rebuilds the identical binaries
@@ -81,9 +86,11 @@ remain owner decisions.
 ## Publication blockers (must be resolved by the owner before release)
 
 1. [RESOLVED] The complete source is committed and pushed: origin/main
-   matches the local HEAD (7e2396f, "fix(installer): preserve Ed25519
-   bytes under UTF-8 locales"). Publication now needs only a tag, a
-   GitHub release, and the owner's signing decision (blockers 2-4).
+   contains the release state (b921bde, "RONDA v0.1.0: release-ready
+   engineering, tests, docs, evidence") plus the documentation-alignment
+   commit. Publication now needs only the owner's push of that alignment
+   commit, a tag v0.1.0 on the final CI-green commit, a GitHub release,
+   and the owner's signing decision (blockers 2-4).
 2. Production Ed25519 signing is NOT_CONFIGURED; without it the release can
    ship checksum-only (explicitly labeled) or wait for SIGNING.md steps.
 3. No release tag exists; tagging is an owner decision.
